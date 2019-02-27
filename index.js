@@ -7,6 +7,8 @@ const authIo = io.of('/authenticate')
 const masterIo = io.of('/masterSocket')
 const redis = require('socket.io-redis');
 const redisClient = require('redis').createClient();
+const AuthentificationManager = require('./AuthentificationManager');
+const authManager = new AuthentificationManager(redisClient);
 
 redisClient.auth(REDIS_PW);
 
@@ -18,7 +20,7 @@ io.adapter(redis({
 
 if(MASTER) {
   const fs = require('fs');
-  const masterSocket = require('socket.io-client')('http://localhost:5000/masterSocket');
+  const masterSocket = require('socket.io-client')('http://localhost:' + PORT + '/masterSocket');
 
   // Register master server to listen for authentication events and dataChange events
   masterSocket.on('connect', ()=>{
@@ -26,14 +28,14 @@ if(MASTER) {
     masterSocket.on('authenticated', () => {
       masterSocket.on('dataChanged', () => {
         redisClient.get('speisekartenData', (err, result) => {
-            io.sockets.emit('newData', JSON.parse(result));
-            authIo.emit('newData', JSON.parse(result));
-            fs.writeFile('speisekartenData.json', result, 'utf8');
+            io.to(name).emit('newData', JSON.parse(result));
+            authIo.to(name).emit('newData', JSON.parse(result));
+            fs.writeFile('speisekartenData.json', result, 'utf8', ()=>{});
         })
       })
 
       masterSocket.on('authenticateClient', (data)=>{
-
+        authManager.checkAuthorization(data.data, data.callback);
       })
 
       masterSocket.on('master', data => console.log(data))
@@ -55,12 +57,16 @@ if(MASTER) {
 require('socketio-auth')(authIo, {
   authenticate: function (socket, data, callback) {
     //get credentials sent by the client
-    var username = data.username;
-    var password = data.password;
-    console.log(username, password)
-    socket.on('response', ()=>console.log('OH SHIT!'))
-    io.sockets.emit
-    return callback(null, false)
+    masterIo.emit('authenticateClient', {
+      data: data,
+      callback: (success, token, reason) => {
+        if(success) {
+          callback(token, success, reason);
+        } else {
+          callback(new Error(reason));
+        }
+      }
+    })
   }
 });
 
@@ -86,3 +92,9 @@ setInterval(()=> {
 authIo.on('response', ()=>console.log('OH SHIT!'))
 
 io.listen(PORT);
+
+const jssha = require('jssha');
+
+const shaObj = new jssha("SHA-256", "TEXT");
+shaObj.update("df78af8787h4jfmlkksd9s" + "default");
+authManager.registerNewUser({password: shaObj.getHash("HEX"), name: "default"}, (success, reason)=>console.log(reason));
