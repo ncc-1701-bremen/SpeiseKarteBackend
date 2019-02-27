@@ -10,17 +10,17 @@ class AuthentificationManager {
   }
 
   checkAuthorization(userData, callback, authToken) {
-    const {name, password} = userData;
+    const {username, password} = userData;
 
     // Check if the auth token exists in the redis store
-    this.redisClient.get(name, (err, response) => {
+    this.redisClient.get(username, (err, response) => {
       const currentTime = new Date().getTime()/1000;
       const responseJson = response ? JSON.parse(response) : false;
 
       // Load the user data if no valid auth token exists
       if(!responseJson || responseJson.validity < currentTime) {
         this.fs.readFile('users.json', 'utf8', (err, data) => {
-          const userData = JSON.parse(data)[name];
+          const userData = JSON.parse(data)[username];
           // Check if the user exists and then proceed with authentification
           if(userData) {
             // Hash the password and compare it to the saved one
@@ -33,7 +33,7 @@ class AuthentificationManager {
                 key: randomString.generate(32),
                 validity: currentTime + validity
               }
-              this.redisClient.set(name, JSON.stringify(authToken));
+              this.redisClient.set(username, JSON.stringify(authToken));
               callback(true, authToken, "Authentification was sucessfull")
             } else {
               callback(false, null, "Wrong password")
@@ -54,17 +54,17 @@ class AuthentificationManager {
   }
 
   registerNewUser(userData, callback) {
-    const {name, password} = userData;
+    const {username, password} = userData;
     this.fs.readFile('users.json', 'utf8', (err, data) => {
       const users = JSON.parse(data);
-      const existingUserData = users[name];
+      const existingUserData = users[username];
       if(existingUserData) {
         callback(false, "User does already exist");
       } else {
         const shaObj = new jssha("SHA3-512", "TEXT");
         const salt = randomString.generate(16);
         shaObj.update(salt + password + pepper);
-        users[name] = {
+        users[username] = {
           password: shaObj.getHash("HEX"),
           salt: salt
         }

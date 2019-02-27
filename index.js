@@ -34,8 +34,11 @@ if(MASTER) {
         })
       })
 
-      masterSocket.on('authenticateClient', (data)=>{
-        authManager.checkAuthorization(data.data, data.callback);
+      masterSocket.on('authenticateClient', (data, callback)=>{
+        console.log(data)
+        if(data && callback) {
+          authManager.checkAuthorization(data, callback);
+        }
       })
 
       masterSocket.on('master', data => console.log(data))
@@ -57,17 +60,20 @@ if(MASTER) {
 require('socketio-auth')(authIo, {
   authenticate: function (socket, data, callback) {
     //get credentials sent by the client
-    masterIo.emit('authenticateClient', {
-      data: data,
-      callback: (success, token, reason) => {
+
+    masterIo.connected[Object.keys(masterIo.connected)[0]].emit('authenticateClient',
+      data,
+      function(success, token, reason) {
         if(success) {
+          console.log(success, token, reason)
           callback(token, success, reason);
         } else {
+          console.log(success, token, reason)
           callback(new Error(reason));
         }
-      }
     })
-  }
+  },
+  timeout: 5000
 });
 
 require('socketio-auth')(masterIo, {
@@ -97,4 +103,4 @@ const jssha = require('jssha');
 
 const shaObj = new jssha("SHA-256", "TEXT");
 shaObj.update("df78af8787h4jfmlkksd9s" + "default");
-authManager.registerNewUser({password: shaObj.getHash("HEX"), name: "default"}, (success, reason)=>console.log(reason));
+authManager.registerNewUser({password: shaObj.getHash("HEX"), username: "default"}, (success, reason)=>console.log(reason));
