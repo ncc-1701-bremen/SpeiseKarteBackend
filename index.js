@@ -115,11 +115,13 @@ require('socketio-auth')(masterIo, {
   }
 });
 
-io.on('connection', (client, data) => {
-    if (data && data.username) {
-      socket.emit('newData', speisekartenData[data.username]);
-      client.join(data.username);
-    }
+io.on('connection', (client) => {
+    client.on('register', (data) => {
+      if (data && data.username) {
+        client.emit('newData', speisekartenData[data.username]);
+        client.join(data.username);
+      }
+    })
 })
 
 io.listen(PORT);
