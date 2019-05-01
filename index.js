@@ -11,6 +11,7 @@ const AuthentificationManager = require('./AuthentificationManager');
 const authManager = new AuthentificationManager(redisClient);
 
 redisClient.auth(REDIS_PW);
+let speisekartenData = null;
 
 io.adapter(redis({
   host: '127.0.0.1',
@@ -26,16 +27,22 @@ if(MASTER) {
   masterSocket.on('connect', ()=>{
     masterSocket.emit('authentication', {});
     masterSocket.on('authenticated', () => {
-      masterSocket.on('dataChanged', () => {
-        redisClient.get('speisekartenData', (err, result) => {
-            io.to(name).emit('newData', JSON.parse(result));
-            authIo.to(name).emit('newData', JSON.parse(result));
-            fs.writeFile('speisekartenData.json', result, 'utf8', ()=>{});
+      masterSocket.on('dataChanged', (data) => {
+        const name = data.username;
+        authManager.checkAuthorization({username: data.username, password: null, token: data.authToken}, () => {
+          redisClient.get('speisekartenData', (err, result) => {
+              result = JSON.parse(result)
+              result[name] = data.data;
+              speisekartenData = result;
+              io.to(name).emit('newData', result[name]);
+              authIo.to(name).emit('newData', result[name]);
+              redisClient.set('speisekartenData', JSON.stringify(result));
+              fs.writeFile('speisekartenData.json', JSON.stringify(result), 'utf8', ()=>{});
+          })
         })
       })
 
       masterSocket.on('authenticateClient', (data, callback)=>{
-        console.log(data)
         if(data && callback) {
           authManager.checkAuthorization(data, callback);
         }
@@ -52,26 +59,52 @@ if(MASTER) {
         console.log('error while setting redis data');
         return;
       }
-      io.sockets.emit('dataChanged');
+      //masterIo.emit('dataChanged', data);
     })
   })
+} else {
+  redisClient.get('speisekartenData', (err, result) => {
+    if (err) {
+      console.log('error while setting redis data');
+      return;
+    }
+    speisekartenData = JSON.parse(result);
+  })
 }
+
+redisClient.watch('speisekartenData', () => {
+  redisClient.get('speisekartenData', (err, result) => {
+    if (err) {
+      console.log('error while setting redis data');
+      return;
+    }
+    speisekartenData = JSON.parse(result);
+  })
+})
 
 require('socketio-auth')(authIo, {
   authenticate: function (socket, data, callback) {
     //get credentials sent by the client
 
-    masterIo.connected[Object.keys(masterIo.connected)[0]].emit('authenticateClient',
-      data,
-      function(success, token, reason) {
-        if(success) {
-          console.log(success, token, reason)
-          callback(token, success, reason);
-        } else {
-          console.log(success, token, reason)
-          callback(new Error(reason));
-        }
-    })
+    if (Object.keys(masterIo.connected).length === 1) {
+      masterIo.connected[Object.keys(masterIo.connected)[0]].emit('authenticateClient',
+        data,
+        function(success, token, reason) {
+          console.log(reason)
+          if(success) {
+            callback(token, success, reason);
+            socket.join(data.username);
+            socket.emit('authToken', token);
+            socket.emit('newData', speisekartenData[data.username]);
+            // TODO: Implement data updates from authenticated client
+            socket.on('changeData', (data) => {
+              masterIo.emit('dataChanged', data);
+            });
+          } else {
+            callback(new Error(reason));
+          }
+      })
+    }
   },
   timeout: 5000
 });
@@ -82,20 +115,12 @@ require('socketio-auth')(masterIo, {
   }
 });
 
-io.on('connection', (client) => {
-    io.sockets.emit('test', "oh yes!")
+io.on('connection', (client, data) => {
+    if (data && data.username) {
+      socket.emit('newData', speisekartenData[data.username]);
+      client.join(data.username);
+    }
 })
-
-setInterval(()=> {
-  io.sockets.emit('test', "oh yes!")
-}, 1000);
-
-setInterval(()=> {
-  masterIo.emit('master', "HOLY SHIT!")
-}, 1000);
-
-
-authIo.on('response', ()=>console.log('OH SHIT!'))
 
 io.listen(PORT);
 

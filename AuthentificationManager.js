@@ -1,7 +1,7 @@
 const jssha = require('jssha');
 const randomString = require('randomstring');
 const pepper = require('./conf.json').pepper;
-const validity = 1800;
+const validity = 600;
 
 class AuthentificationManager {
   constructor(redisClient) {
@@ -9,9 +9,8 @@ class AuthentificationManager {
     this.fs = require('fs');
   }
 
-  checkAuthorization(userData, callback, authToken) {
+  checkAuthorization(userData, callback, authToken = userData.token) {
     const {username, password} = userData;
-
     // Check if the auth token exists in the redis store
     this.redisClient.get(username, (err, response) => {
       const currentTime = new Date().getTime()/1000;
