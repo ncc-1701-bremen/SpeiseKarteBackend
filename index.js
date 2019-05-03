@@ -34,7 +34,7 @@ if(MASTER) {
               result = JSON.parse(result)
               result[name] = data.data;
               speisekartenData = result;
-              io.to(name).emit('newData', result[name]);
+              io.sockets.in(name).emit('newData', result[name]);
               authIo.to(name).emit('newData', result[name]);
               redisClient.set('speisekartenData', JSON.stringify(result));
               fs.writeFile('speisekartenData.json', JSON.stringify(result), 'utf8', ()=>{});
