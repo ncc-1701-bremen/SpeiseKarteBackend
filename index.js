@@ -72,6 +72,7 @@ if(MASTER) {
   })
 }
 
+// TDOD: Watch does not work properly. Fix for slave clusters
 redisClient.watch('speisekartenData', () => {
   redisClient.get('speisekartenData', (err, result) => {
     if (err) {
@@ -109,6 +110,7 @@ require('socketio-auth')(authIo, {
   timeout: 5000
 });
 
+// TODO: Implement Proper Master Server Authentification
 require('socketio-auth')(masterIo, {
   authenticate: function (socket, data, callback) {
     return callback(null, MASTER)
