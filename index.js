@@ -13,6 +13,7 @@ const authManager = new AuthentificationManager(redisClient);
 redisClient.auth(REDIS_PW);
 let speisekartenData = null;
 
+// Conenct Socket.io with an Redis updater to make use of redis for clustering
 io.adapter(redis({
   host: '127.0.0.1',
   port: 6379,
@@ -21,6 +22,8 @@ io.adapter(redis({
 
 if(MASTER) {
   const fs = require('fs');
+
+  //  TODO: Use a dynamic URL/IP instead of localhost
   const masterSocket = require('socket.io-client')('http://localhost:' + PORT + '/masterSocket');
 
   // Register master server to listen for authentication events and dataChange events
@@ -73,6 +76,7 @@ if(MASTER) {
 }
 
 // TDOD: Watch does not work properly. Fix for slave clusters
+// Redis Store watcher to update the data on all slaves upon update
 redisClient.watch('speisekartenData', () => {
   redisClient.get('speisekartenData', (err, result) => {
     if (err) {
@@ -83,11 +87,14 @@ redisClient.watch('speisekartenData', () => {
   })
 })
 
+// AUthentification to the private socket network
 require('socketio-auth')(authIo, {
   authenticate: function (socket, data, callback) {
     //get credentials sent by the client
 
+    // Check the amount of registered master servers, should currently only be one
     if (Object.keys(masterIo.connected).length === 1) {
+      // Send the request directly to the master server
       masterIo.connected[Object.keys(masterIo.connected)[0]].emit('authenticateClient',
         data,
         function(success, token, reason) {
@@ -95,9 +102,11 @@ require('socketio-auth')(authIo, {
           if(success) {
             callback(token, success, reason);
             socket.join(data.username);
+            // Send the auth token after succesful login
             socket.emit('authToken', token);
             socket.emit('newData', speisekartenData[data.username]);
-            // TODO: Implement data updates from authenticated client
+
+            // Register the master server connection on updates from the user
             socket.on('changeData', (data) => {
               masterIo.emit('dataChanged', data);
             });
@@ -117,6 +126,7 @@ require('socketio-auth')(masterIo, {
   }
 });
 
+// On an pulic conenction, handle the socket conenction to send updated data
 io.on('connection', (client) => {
     client.on('register', (data) => {
       if (data && data.username) {
@@ -128,6 +138,8 @@ io.on('connection', (client) => {
 
 io.listen(PORT);
 
+
+// The following lines simply create an defualt test user if it does not exist. This has to be deleted in the final version
 const jssha = require('jssha');
 
 const shaObj = new jssha("SHA-256", "TEXT");
